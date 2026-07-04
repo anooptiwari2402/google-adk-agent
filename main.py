@@ -1,6 +1,7 @@
 import asyncio
 import os
 import pathlib
+import shlex
 import sys
 from typing import Any, Dict
 
@@ -25,6 +26,55 @@ load_dotenv()
 # Initialize Rich console for beautiful terminal output
 console = Console()
 
+def is_destructive(command: str) -> bool:
+    """Checks if a command is potentially destructive (e.g., contains rm, rmdir, or -rf)."""
+    try:
+        # shlex.split helps parse shell commands correctly including quotes
+        tokens = shlex.split(command)
+    except Exception:
+        tokens = command.split()
+        
+    if not tokens:
+        return False
+        
+    # 1. Check if the executable itself is rm, rmdir, or ends with /rm, /rmdir
+    first_token = tokens[0]
+    is_rm_command = (first_token == 'rm' or first_token.endswith('/rm') or 
+                     first_token == 'rmdir' or first_token.endswith('/rmdir'))
+    
+    # Also handle sudo, xargs, etc. before the executable
+    for i, token in enumerate(tokens):
+        if token in ('sudo', 'xargs') or '=' in token:
+            if i + 1 < len(tokens):
+                next_tok = tokens[i + 1]
+                if next_tok in ('rm', 'rmdir') or next_tok.endswith('/rm') or next_tok.endswith('/rmdir'):
+                    is_rm_command = True
+                    break
+                    
+    # 2. Check if 'rm' is used inside evaluation commands like bash -c "rm -rf foo"
+    is_eval_with_rm = False
+    if first_token in ('bash', 'sh', 'zsh', 'python', 'python3', 'eval', 'exec'):
+        for token in tokens[1:]:
+            if 'rm ' in token or 'rmdir ' in token or 'rm -' in token:
+                is_eval_with_rm = True
+                break
+
+    if is_rm_command or is_eval_with_rm:
+        return True
+        
+    # 3. Check for standalone 'rm' or 'rmdir' tokens (e.g. echo foo && rm bar)
+    for idx, token in enumerate(tokens):
+        if token in ('rm', 'rmdir'):
+            # Skip if preceded by commands where rm is an argument (git, grep, echo, etc.)
+            # except when separated by shell operators (&&, ;, |, ||)
+            if idx > 0:
+                prev_token = tokens[idx - 1]
+                if prev_token in ('git', 'grep', 'echo', 'cat', 'ag', 'rg', 'nano', 'vim', 'vi'):
+                    continue
+            return True
+            
+    return False
+
 async def run_terminal_command(command: str) -> Dict[str, Any]:
     """Executes a shell command on the local machine and returns stdout, stderr, and the exit code.
 
@@ -34,6 +84,33 @@ async def run_terminal_command(command: str) -> Dict[str, Any]:
     Returns:
         A dictionary containing 'stdout', 'stderr', and 'exit_code'.
     """
+    if is_destructive(command):
+        console.print(f"\n[bold red]⚠️  WARNING: Potentially destructive terminal command detected![/bold red]")
+        console.print(f"[bold yellow]Command:[/bold yellow] {command}")
+        console.print("[bold red]This command contains destructive operations (such as rm or -rf).[/bold red]")
+        
+        # Ask for human intervention/confirmation in a non-blocking way for the event loop
+        loop = asyncio.get_running_loop()
+        try:
+            # Run input() in an executor thread so it doesn't block the main event loop
+            user_response = await loop.run_in_executor(
+                None, 
+                lambda: input("Do you want to allow execution of this command? (type 'yes' to proceed, any other key to cancel): ")
+            )
+        except Exception as e:
+            # Fallback if stdin is not interactive
+            user_response = "no"
+            console.print(f"[bold red]Failed to get user confirmation (error: {e}). Aborting.[/bold red]")
+            
+        if user_response.strip().lower() != 'yes':
+            console.print("[bold red]🚫 Command execution cancelled by user.[/bold red]\n")
+            return {
+                "stdout": "",
+                "stderr": "Command execution aborted: Guardrails require human confirmation ('yes') for destructive commands (rm, -rf).",
+                "exit_code": -1
+            }
+        console.print("[bold green]✅ User confirmed. Executing command...[/bold green]\n")
+
     console.print(f"[yellow]Executing terminal command:[/yellow] {command}")
     try:
         # Run command asynchronously to avoid blocking the agent loop
