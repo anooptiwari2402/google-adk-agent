@@ -1,3 +1,7 @@
 google-adk
 python-dotenv
 rich
+mcp
+prompt-toolkit
+greenlet
+
