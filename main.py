@@ -211,17 +211,18 @@ async def main():
     # unless wrapped as a separate sub-agent tool.
     google_search = GoogleSearchTool(bypass_multi_tools_limit=True)
 
-    # 3. Setup the Agent with all our tools: MCP Filesystem, and Terminal Command
+    # 3. Setup the Agent with all our tools: MCP Filesystem, Terminal Command, and Google Search
     agent = Agent(
         name="SuperAssistant",
         model="gemini-3.5-flash",
         tools=[filesystem_toolset, terminal_tool, google_search],
         instruction=(
             SYSTEM_PROMPT + 
-            "\n\nIn addition to deep research, you have direct access to the local filesystem (via MCP tools) "
-            "and terminal commands (via execute_terminal_command). You can read/write files and run "
-            "commands to assist the user in their programming and research tasks. "
-            "Use these tools efficiently to solve problems directly."
+            "\n\nIn addition to deep research, you have direct access to the local filesystem (via MCP tools), "
+            "terminal commands (via run_terminal_command), and web search (via google_search). "
+            "You can read/write files, execute shell commands, and query Google to assist the user in their "
+            "programming, debugging, and factual research tasks. Use these tools efficiently to solve "
+            "problems directly with maximum accuracy."
         )
     )
 
