@@ -203,6 +203,18 @@ async def main():
         errlog=open(os.devnull, "w")
     )
 
+    # Setup the Groww MCP Toolset via mcp-remote bridge
+    console.print(f"[bold info]Connecting to remote Groww MCP Server...[/bold info]")
+    groww_toolset = McpToolset(
+        connection_params=StdioConnectionParams(
+            server_params=StdioServerParameters(
+                command="npx",
+                args=["-y", "mcp-remote", "https://mcp.groww.in/mcp"],
+            )
+        ),
+        errlog=open(os.devnull, "w")
+    )
+
     # 2. Setup the Terminal Tool (FunctionTool wrapping our async run_terminal_command function)
     terminal_tool = FunctionTool(run_terminal_command)
 
@@ -211,19 +223,12 @@ async def main():
     # unless wrapped as a separate sub-agent tool.
     google_search = GoogleSearchTool(bypass_multi_tools_limit=True)
 
-    # 3. Setup the Agent with all our tools: MCP Filesystem, Terminal Command, and Google Search
+    # 3. Setup the Agent with all our tools: MCP Filesystem, Groww Portfolio, Terminal Command, and Google Search
     agent = Agent(
         name="SuperAssistant",
         model="gemini-3.5-flash",
-        tools=[filesystem_toolset, terminal_tool, google_search],
-        instruction=(
-            SYSTEM_PROMPT + 
-            "\n\nIn addition to deep research, you have direct access to the local filesystem (via MCP tools), "
-            "terminal commands (via run_terminal_command), and web search (via google_search). "
-            "You can read/write files, execute shell commands, and query Google to assist the user in their "
-            "programming, debugging, and factual research tasks. Use these tools efficiently to solve "
-            "problems directly with maximum accuracy."
-        )
+        tools=[filesystem_toolset, groww_toolset, terminal_tool, google_search],
+        instruction=SYSTEM_PROMPT
     )
 
     # Use SQLite Database Session Service for persistent session storage
@@ -318,6 +323,7 @@ async def main():
         if "session_service" in locals() and session_service is not None:
             await session_service.close()
         # Clean up the MCP toolset connections
+        await groww_toolset.close()
         await filesystem_toolset.close()
 
 if __name__ == '__main__':
