@@ -7,6 +7,7 @@ from typing import Any, Dict
 
 from dotenv import load_dotenv
 from google.adk import Agent, Runner
+from google.adk.agents.run_config import RunConfig, StreamingMode
 from google.adk.sessions import DatabaseSessionService
 from google.adk.tools import McpToolset, FunctionTool
 from google.adk.tools.google_search_tool import GoogleSearchTool
@@ -297,22 +298,32 @@ async def main():
             console.print("[bold yellow]SuperAssistant:[/bold yellow]")
             
             accumulated_text = ""
-            with Live(Markdown(""), console=console, auto_refresh=True) as live:
-                # Run the agent asynchronously and iterate over the generated events
+            # Configure RunConfig for SSE (Server-Sent Events) streaming
+            run_config = RunConfig(streaming_mode=StreamingMode.SSE)
+            
+            # Set transient=True so the live raw stream is cleared when the context manager exits
+            with Live("", console=console, auto_refresh=True, transient=True) as live:
+                # Run the agent asynchronously with SSE streaming enabled in run_config
                 async for event in runner.run_async(
                     user_id=user_id,
                     session_id=session_id,
-                    new_message=content
+                    new_message=content,
+                    run_config=run_config
                 ):
                     # Inspect event content
                     if event.content and event.content.parts:
                         part = event.content.parts[0]
                         if part.text:
-                            accumulated_text += part.text
-                            live.update(Markdown(accumulated_text))
+                            if event.partial:
+                                accumulated_text += part.text
+                                # Update with raw text instantly (zero parsing overhead!)
+                                live.update(accumulated_text)
+                            else:
+                                # When partial is False, part.text is the final consolidated text
+                                accumulated_text = part.text
             
-            # Print a newline at the end of the streaming response
-            console.print()
+            # Print the final beautifully rendered markdown
+            console.print(Markdown(accumulated_text))
             
     except (KeyboardInterrupt, EOFError):
         console.print("\n[bold yellow]Session cancelled. Goodbye![/bold yellow]\n")
