@@ -310,7 +310,28 @@ async def main():
                     new_message=content,
                     run_config=run_config
                 ):
-                    # Inspect event content
+                    # 1. Print events related to Tool Execution (Function Calls)
+                    function_calls = event.get_function_calls()
+                    if function_calls:
+                        for call in function_calls:
+                            # Rich Live doesn't handle printed lines well while active.
+                            # We can output a beautiful status bar above the typewriter stream
+                            live.console.print(f"\n[bold magenta]🛠️  Executing Tool:[/bold magenta] [cyan]'{call.name}'[/cyan]")
+                            if call.args:
+                                live.console.print(f"   [dim]Arguments: {call.args}[/dim]\n")
+
+                    # 2. Print events related to completed Tool Execution (Function Responses)
+                    function_responses = event.get_function_responses()
+                    if function_responses:
+                        for resp in function_responses:
+                            live.console.print(f"[bold green]✅ Tool Completed:[/bold green] [cyan]'{resp.name}'[/cyan]")
+                            # Print a tiny, clean representation of the response
+                            resp_str = str(resp.response)
+                            if len(resp_str) > 150:
+                                resp_str = resp_str[:150] + "..."
+                            live.console.print(f"   [dim]Response: {resp_str}[/dim]\n")
+
+                    # 3. Handle incremental typewriter text streaming
                     if event.content and event.content.parts:
                         part = event.content.parts[0]
                         if part.text:
