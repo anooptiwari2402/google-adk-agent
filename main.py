@@ -3,6 +3,7 @@ import os
 import pathlib
 import shlex
 import sys
+import uuid
 from typing import Any, Dict
 
 from dotenv import load_dotenv
@@ -239,7 +240,7 @@ async def main():
 
     app_name = "enhanced-adk-agent"
     user_id = "user-1"
-    session_id = "session-1"
+    session_id = str(uuid.uuid4())
 
     # Check if a persistent session already exists to allow session resumption
     existing_session = await session_service.get_session(
